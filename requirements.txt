@@ -1,0 +1,16 @@
+# Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Computer Vision & Image Processing
+opencv-python-headless>=4.8.0
+Pillow>=9.5.0
+
+# SAM (Segment Anything Model) - Direct from Meta's GitHub
+git+https://github.com/facebookresearch/segment-anything.git
+
+# Data handling & Utilities
+numpy>=1.24.0
+scikit-learn>=1.2.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
