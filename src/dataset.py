@@ -1,59 +1,58 @@
 import os
-import glob
 import random
 from collections import Counter
 from PIL import Image
 from torch.utils.data import Dataset
-from config import MIN_IMAGES_PER_CLASS
 
-def get_filtered_dataset(dataset_dir):
-    """Filters out classes with fewer than the minimum required images."""
-    all_images = glob.glob(os.path.join(dataset_dir, '*/*.*'))
-
-    # Count images per class
-    labels = [os.path.basename(os.path.dirname(p)) for p in all_images]
-    class_counts = Counter(labels)
-
-    # Keep only classes with >= MIN_IMAGES_PER_CLASS
-    valid_classes = {cls for cls, count in class_counts.items() if count >= MIN_IMAGES_PER_CLASS}
-
-    filtered_images = [p for p in all_images if os.path.basename(os.path.dirname(p)) in valid_classes]
-
-    # Create consistent class to index mapping
-    class_to_idx = {cls: idx for idx, cls in enumerate(sorted(valid_classes))}
-
-    return filtered_images, class_to_idx
+def get_filtered_dataset(dataset_dir, min_images=7):
+    """Filters classes with < 7 images and ignores non-image files."""
+    valid_extensions = ('.png', '.jpg', '.jpeg', '.JPG', '.PNG')
+    class_names = sorted([d for d in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, d))])
+    
+    valid_paths = []
+    class_to_idx = {}
+    idx = 0
+    
+    for class_name in class_names:
+        class_dir = os.path.join(dataset_dir, class_name)
+        # FIX: Only grab files with valid image extensions
+        images = [os.path.join(class_dir, f) for f in os.listdir(class_dir) 
+                  if f.lower().endswith(valid_extensions)]
+        
+        if len(images) >= min_images:
+            valid_paths.extend(images)
+            class_to_idx[class_name] = idx
+            idx += 1
+            
+    return valid_paths, class_to_idx
 
 def balance_training_data(train_paths):
-    """
-    Balances the dataset by oversampling under-represented classes
-    and capping over-represented classes to 2x the average count.
-    """
-    labels = [os.path.basename(os.path.dirname(p)) for p in train_paths]
-    class_counts = Counter(labels)
-
-    avg_count = int(len(train_paths) / len(class_counts))
-    max_count = avg_count * 2
-
+    """Oversamples minority classes to the average and caps majority classes at 2x average."""
+    class_counts = Counter([os.path.basename(os.path.dirname(p)) for p in train_paths])
+    if not class_counts:
+        return train_paths
+        
+    avg_count = int(sum(class_counts.values()) / len(class_counts))
+    cap_count = avg_count * 2
+    
     balanced_paths = []
-    class_to_paths = {}
-
-    for p, l in zip(train_paths, labels):
-        class_to_paths.setdefault(l, []).append(p)
-
-    for cls, paths in class_to_paths.items():
-        if len(paths) > max_count:
-            # Cap at 2x average
-            balanced_paths.extend(random.sample(paths, max_count))
-        elif len(paths) < avg_count:
-            # Oversample to reach the average
+    paths_by_class = {c: [] for c in class_counts.keys()}
+    
+    for p in train_paths:
+        c = os.path.basename(os.path.dirname(p))
+        paths_by_class[c].append(p)
+        
+    for c, paths in paths_by_class.items():
+        count = len(paths)
+        if count < avg_count:
             balanced_paths.extend(paths)
-            shortfall = avg_count - len(paths)
-            balanced_paths.extend(random.choices(paths, k=shortfall))
+            diff = avg_count - count
+            balanced_paths.extend(random.choices(paths, k=diff))
+        elif count > cap_count:
+            balanced_paths.extend(random.sample(paths, cap_count))
         else:
             balanced_paths.extend(paths)
-
-    # Shuffle the final balanced dataset
+            
     random.shuffle(balanced_paths)
     return balanced_paths
 
@@ -62,19 +61,19 @@ class HieroglyphDataset(Dataset):
         self.image_paths = image_paths
         self.class_to_idx = class_to_idx
         self.transform = transform
-
+        
     def __len__(self):
         return len(self.image_paths)
-
+        
     def __getitem__(self, idx):
         img_path = self.image_paths[idx]
-        label_str = os.path.basename(os.path.dirname(img_path))
-        label = self.class_to_idx[label_str]
-
-        # Convert to RGB to handle any grayscale/RGBA anomalies safely
+        class_name = os.path.basename(os.path.dirname(img_path))
+        label = self.class_to_idx[class_name]
+        
+        # Force convert to RGB to prevent crashes from grayscale or RGBA images
         image = Image.open(img_path).convert('RGB')
-
+        
         if self.transform:
             image = self.transform(image)
-
+            
         return image, label
