@@ -6,7 +6,6 @@ from config import SAM_CKPT_PATH
 
 
 def load_sam_predictor(device=None):
-    """Loads the SAM predictor using the ViT-B checkpoint."""
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     sam = sam_model_registry["vit_b"](checkpoint=SAM_CKPT_PATH)
@@ -15,7 +14,6 @@ def load_sam_predictor(device=None):
 
 
 def compute_iou(boxA, boxB):
-    """Computes Intersection over Union for Non-Maximum Suppression."""
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])
     xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
@@ -27,23 +25,21 @@ def compute_iou(boxA, boxB):
 
 
 def segment_hieroglyphs_igsm(image_path, predictor, is_carved=True):
-    """
-    Focused Generic Segmentation Method (IGSM).
-    Uses Otsu binarization to find point prompts, then queries SAM
-    per connected region. Applies NMS to remove duplicate detections.
-    """
     img = cv2.imread(image_path)
     if img is None:
         raise ValueError(f"Could not read image at {image_path}")
 
     original_color = img.copy()
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img_area = img.shape[0] * img.shape[1]
+    img_h, img_w = img.shape[:2]
+    img_area = img_h * img_w
 
-    # 1. Otsu Binarization
+    # Adaptive bounds
+    min_dim = min(img_h, img_w)
+    min_area = max(50, int((0.015 * min_dim) ** 2))
+    max_area = 0.05 * img_area
+
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
-    # 2. Find connected components
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(thresh, connectivity=8)
 
     predictor.set_image(cv2.cvtColor(original_color, cv2.COLOR_BGR2RGB))
@@ -52,8 +48,8 @@ def segment_hieroglyphs_igsm(image_path, predictor, is_carved=True):
 
     for i in range(1, num_labels):
         area = stats[i, cv2.CC_STAT_AREA]
-        # FIX: filter both too small AND too large regions
-        if area < 100 or area > 0.08 * img_area:
+        # Adaptive min and max area filter
+        if area < min_area or area > max_area:
             continue
 
         num_points = np.random.randint(6, 12) if is_carved else np.random.randint(3, 9)
@@ -80,9 +76,11 @@ def segment_hieroglyphs_igsm(image_path, predictor, is_carved=True):
         if len(x_mask) > 0 and len(y_mask) > 0:
             x_min, x_max = int(np.min(x_mask)), int(np.max(x_mask))
             y_min, y_max = int(np.min(y_mask)), int(np.max(y_mask))
-            all_boxes.append([x_min, y_min, x_max - x_min, y_max - y_min])
+            box_area = (x_max - x_min) * (y_max - y_min)
+            # Also filter the resulting SAM mask box by size
+            if box_area < max_area:
+                all_boxes.append([x_min, y_min, x_max - x_min, y_max - y_min])
 
-    # 3. NMS
     keep_indices = []
     for i in range(len(all_boxes)):
         keep = True
