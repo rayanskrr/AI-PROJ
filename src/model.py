@@ -10,12 +10,12 @@ def build_model(num_classes):
     # Load the pretrained ConvNeXt-tiny model
     weights = ConvNeXt_Tiny_Weights.DEFAULT
     model = convnext_tiny(weights=weights)
-    
+
     # In ConvNeXt, the classifier is a Sequential block.
     # We need to find the number of input features to the final Linear layer.
     in_features = model.classifier[2].in_features
-    
+
     # Replace the final layer with a new one matching our exact class count
     model.classifier[2] = nn.Linear(in_features, num_classes)
-    
+
     return model

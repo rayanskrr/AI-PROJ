@@ -36,32 +36,32 @@ def evaluate_ensemble(models, test_loader, class_names, device="cuda"):
     with torch.no_grad():
         for images, labels in test_loader:
             images, labels = images.to(device), labels.to(device)
-            
+
             batch_size = images.size(0)
             ensemble_probs = torch.zeros((batch_size, len(class_names)), device=device)
             model_preds = torch.zeros((len(models), batch_size), dtype=torch.long, device=device)
-            
+
             for i, model in enumerate(models):
                 with torch.autocast(device_type='cuda'):
                     outputs = model(images)
-                
+
                 probs = torch.softmax(outputs.float(), dim=1)
-                
+
                 # For Soft Voting: Accumulate probabilities
                 ensemble_probs += probs
-                
+
                 # For Hard Voting: Store each model's discrete prediction
                 _, preds = torch.max(probs, 1)
                 model_preds[i] = preds
-            
+
             # --- SOFT VOTING CALCULATION ---
             ensemble_probs /= len(models)
             _, soft_preds = torch.max(ensemble_probs, 1)
-            
+
             # --- HARD VOTING CALCULATION ---
             # torch.mode returns (values, indices). We want the values (the majority class).
             hard_preds, _ = torch.mode(model_preds, dim=0)
-            
+
             all_soft_preds.extend(soft_preds.cpu().numpy())
             all_hard_preds.extend(hard_preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
@@ -84,7 +84,7 @@ def evaluate_ensemble(models, test_loader, class_names, device="cuda"):
 
     print_metrics(all_labels, all_soft_preds, "Soft Voting")
     print_metrics(all_labels, all_hard_preds, "Hard Voting")
-    
+
     return all_labels, all_soft_preds, all_hard_preds
 
 def plot_confusion_matrix(labels, preds, class_names, save_path="confusion_matrix.png"):
