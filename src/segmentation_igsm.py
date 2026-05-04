@@ -39,7 +39,13 @@ def segment_hieroglyphs_igsm(image_path, predictor, is_carved=True):
     min_area = max(50, int((0.015 * min_dim) ** 2))
     max_area = 0.05 * img_area
 
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # RESEARCH FIX: Use Adaptive Thresholding instead of global Otsu to handle uneven stone lighting
+    blurred_for_igsm = cv2.GaussianBlur(gray, (5, 5), 0)
+    thresh = cv2.adaptiveThreshold(
+        blurred_for_igsm, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY_INV, 21, 5
+    )
+    
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(thresh, connectivity=8)
 
     predictor.set_image(cv2.cvtColor(original_color, cv2.COLOR_BGR2RGB))
