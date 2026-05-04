@@ -31,7 +31,8 @@ def segment_hieroglyphs_mbrs(image_path):
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
         box_area = w * h
-        if w > min_size and h > min_size and box_area < max_area:
+        # RESEARCH FIX: Relaxed strict dimension check to allow thin glyphs (like z1, N35) as long as total area is valid.
+        if (w > 5 and h > 5) and box_area > (min_size ** 2) and box_area < max_area:
             crop = original_color[y:y+h, x:x+w]
             detections.append(((x, y, w, h), crop))
 
