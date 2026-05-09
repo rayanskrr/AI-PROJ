@@ -35,7 +35,7 @@ def train_cvv_slots(image_paths, class_to_idx, num_classes, device="cuda"):
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
 
         # FIX: Updated GradScaler API
-        scaler = torch.cuda.amp.GradScaler()
+        scaler = torch.amp.GradScaler(cuda)
 
         best_val_acc = 0.0
         epochs_no_improve = 0
